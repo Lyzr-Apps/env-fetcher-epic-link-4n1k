@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { callAIAgent } from '@/lib/aiAgent'
 import type { AIAgentResponse } from '@/lib/aiAgent'
-import { FiSearch, FiCopy, FiEye, FiEyeOff, FiClock, FiTrash2, FiSettings, FiTerminal, FiAlertCircle, FiRefreshCw, FiChevronUp, FiChevronDown, FiCheck, FiX, FiZap, FiActivity, FiList } from 'react-icons/fi'
+import { FiSearch, FiCopy, FiClock, FiTrash2, FiSettings, FiTerminal, FiAlertCircle, FiRefreshCw, FiChevronUp, FiChevronDown, FiCheck, FiZap, FiActivity, FiList } from 'react-icons/fi'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -224,31 +224,6 @@ class ErrorBoundary extends React.Component<
   }
 }
 
-// ─── Sample Data ──────────────────────────────────────────────────────────────
-
-const SAMPLE_RESULT: AgentResult = {
-  query_interpretation: 'Looking for all database-related environment variables including connection strings, hosts, ports, and credentials.',
-  variables: [
-    { name: 'DATABASE_URL', value: 'postgresql://admin:s3cret@db.prod.internal:5432/maindb', confidence: 'high' },
-    { name: 'DB_HOST', value: 'db.prod.internal', confidence: 'high' },
-    { name: 'DB_PORT', value: '5432', confidence: 'high' },
-    { name: 'DB_USER', value: 'admin', confidence: 'high' },
-    { name: 'DB_PASSWORD', value: 'xK9#mP2$vL7nQ4wR', confidence: 'high' },
-    { name: 'DB_NAME', value: 'maindb', confidence: 'medium' },
-    { name: 'DB_SSL_MODE', value: 'require', confidence: 'medium' },
-    { name: 'DB_POOL_SIZE', value: '20', confidence: 'low' },
-  ],
-  total_found: 8,
-  message: 'Found 8 database-related environment variables. Includes connection string, host, port, credentials, and pool configuration.',
-}
-
-const SAMPLE_HISTORY: QueryHistoryItem[] = [
-  { id: '1', query: 'database credentials', timestamp: new Date(Date.now() - 3600000).toISOString(), resultCount: 8 },
-  { id: '2', query: 'all API keys', timestamp: new Date(Date.now() - 7200000).toISOString(), resultCount: 5 },
-  { id: '3', query: 'AWS region config', timestamp: new Date(Date.now() - 86400000).toISOString(), resultCount: 3 },
-  { id: '4', query: 'Redis connection settings', timestamp: new Date(Date.now() - 172800000).toISOString(), resultCount: 4 },
-]
-
 // ─── Quick Suggestion Chips ───────────────────────────────────────────────────
 
 const FETCH_ALL_QUERY = 'List every single environment variable available on the system. Return all of them without any filter — show everything.'
@@ -377,11 +352,9 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null)
   const [results, setResults] = useState<AgentResult | null>(null)
   const [history, setHistory] = useState<QueryHistoryItem[]>([])
-  const [revealedValues, setRevealedValues] = useState<Set<number>>(new Set())
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null)
   const [sortField, setSortField] = useState<'name' | 'confidence'>('name')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
-  const [sampleMode, setSampleMode] = useState(false)
   const [hasQueried, setHasQueried] = useState(false)
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -422,14 +395,9 @@ export default function Page() {
     }
   }, [history])
 
-  // Display data (sample vs real)
-  const displayResults = sampleMode ? SAMPLE_RESULT : results
-  const displayHistory = sampleMode ? SAMPLE_HISTORY : history
-  const displayHasQueried = sampleMode ? true : hasQueried
-
   // Sort variables
   const sortedVariables = useCallback(() => {
-    const vars = Array.isArray(displayResults?.variables) ? [...displayResults.variables] : []
+    const vars = Array.isArray(results?.variables) ? [...results.variables] : []
     const confOrder: Record<string, number> = { high: 3, medium: 2, low: 1 }
     vars.sort((a, b) => {
       if (sortField === 'name') {
@@ -441,7 +409,7 @@ export default function Page() {
       }
     })
     return vars
-  }, [displayResults, sortField, sortDirection])
+  }, [results, sortField, sortDirection])
 
   // Submit query
   const handleSubmit = useCallback(async (queryText?: string) => {
@@ -451,7 +419,6 @@ export default function Page() {
     setLoading(true)
     setError(null)
     setResults(null)
-    setRevealedValues(new Set())
     setHasQueried(true)
     setActiveAgentId(AGENT_ID)
 
@@ -526,19 +493,6 @@ export default function Page() {
     }
   }, [])
 
-  // Toggle value reveal
-  const toggleReveal = useCallback((index: number) => {
-    setRevealedValues(prev => {
-      const next = new Set(prev)
-      if (next.has(index)) {
-        next.delete(index)
-      } else {
-        next.add(index)
-      }
-      return next
-    })
-  }, [])
-
   // Toggle sort
   const handleSort = useCallback((field: 'name' | 'confidence') => {
     if (sortField === field) {
@@ -562,16 +516,8 @@ export default function Page() {
   // Re-run from history
   const rerunQuery = useCallback((q: string) => {
     setQuery(q)
-    setSampleMode(false)
     handleSubmit(q)
   }, [handleSubmit])
-
-  // Mask value
-  const maskValue = (value: string) => {
-    if (!value) return ''
-    if (value.length <= 4) return '\u2022'.repeat(value.length)
-    return value.slice(0, 2) + '\u2022'.repeat(Math.min(value.length - 4, 20)) + value.slice(-2)
-  }
 
   const sorted = sortedVariables()
 
@@ -603,28 +549,6 @@ export default function Page() {
               </span>
             </div>
             <div className="flex items-center gap-3">
-              {/* Sample Data Toggle */}
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <span className="text-xs font-mono" style={{ color: 'hsl(50, 6%, 58%)' }}>Sample Data</span>
-                <div
-                  className="relative w-9 h-5 transition-colors"
-                  style={{
-                    background: sampleMode ? 'hsl(80, 80%, 50%)' : 'hsl(70, 10%, 26%)',
-                    borderRadius: '0',
-                  }}
-                  onClick={() => setSampleMode(!sampleMode)}
-                >
-                  <div
-                    className="absolute top-0.5 w-4 h-4 transition-transform"
-                    style={{
-                      background: sampleMode ? 'hsl(70, 10%, 10%)' : 'hsl(50, 6%, 58%)',
-                      borderRadius: '0',
-                      left: sampleMode ? '18px' : '2px',
-                      transition: 'left 0.15s ease',
-                    }}
-                  />
-                </div>
-              </label>
               <FiSettings size={18} style={{ color: 'hsl(50, 6%, 58%)' }} className="cursor-pointer hover:opacity-80 transition-opacity" />
             </div>
           </header>
@@ -644,7 +568,7 @@ export default function Page() {
                     History
                   </span>
                 </div>
-                {displayHistory.length > 0 && !sampleMode && (
+                {history.length > 0 && (
                   <button
                     onClick={clearHistory}
                     className="p-1 transition-opacity hover:opacity-100 opacity-60"
@@ -656,13 +580,13 @@ export default function Page() {
                 )}
               </div>
               <div className="flex-1 overflow-y-auto">
-                {displayHistory.length === 0 ? (
+                {history.length === 0 ? (
                   <div className="px-3 py-6 text-center">
                     <p className="text-xs" style={{ color: 'hsl(50, 6%, 58%)' }}>No queries yet</p>
                   </div>
                 ) : (
                   <div className="py-1">
-                    {displayHistory.map((item) => (
+                    {history.map((item) => (
                       <button
                         key={item.id}
                         onClick={() => rerunQuery(item.query)}
@@ -756,7 +680,6 @@ export default function Page() {
                     <button
                       onClick={() => {
                         setQuery('Show all environment variables')
-                        setSampleMode(false)
                         handleSubmit(FETCH_ALL_QUERY)
                       }}
                       disabled={loading}
@@ -795,7 +718,6 @@ export default function Page() {
                         key={s}
                         onClick={() => {
                           setQuery(s)
-                          setSampleMode(false)
                           handleSubmit(s)
                         }}
                         disabled={loading}
@@ -830,7 +752,7 @@ export default function Page() {
                 <div className="max-w-3xl mx-auto">
 
                   {/* Error Banner */}
-                  {error && !sampleMode && (
+                  {error && (
                     <div
                       className="flex items-start gap-3 px-4 py-3 mb-4"
                       style={{
@@ -857,7 +779,7 @@ export default function Page() {
                   )}
 
                   {/* Loading State */}
-                  {loading && !sampleMode && (
+                  {loading && (
                     <div>
                       <div className="flex items-center gap-2 mb-3">
                         <FiRefreshCw size={14} className="animate-spin" style={{ color: 'hsl(52, 100%, 62%)' }} />
@@ -883,11 +805,10 @@ export default function Page() {
                   )}
 
                   {/* No query yet */}
-                  {!loading && !displayHasQueried && !error && (
+                  {!loading && !hasQueried && !error && (
                     <InitialState
                       onFetchAll={() => {
                         setQuery('Show all environment variables')
-                        setSampleMode(false)
                         handleSubmit(FETCH_ALL_QUERY)
                       }}
                       loading={loading}
@@ -895,7 +816,7 @@ export default function Page() {
                   )}
 
                   {/* Results */}
-                  {!loading && displayResults && (
+                  {!loading && results && (
                     <div>
                       {/* Interpretation + Stats */}
                       <div className="mb-4 p-3" style={{ background: 'hsl(70, 10%, 16%)', border: '1px solid hsl(70, 8%, 22%)', borderRadius: '0' }}>
@@ -905,20 +826,20 @@ export default function Page() {
                               Query Interpretation
                             </p>
                             <div style={{ color: 'hsl(60, 30%, 96%)' }}>
-                              {renderMarkdown(displayResults.query_interpretation ?? '')}
+                              {renderMarkdown(results?.query_interpretation ?? '')}
                             </div>
                           </div>
                           <div className="shrink-0 text-right">
                             <p className="text-2xl font-mono font-bold" style={{ color: 'hsl(80, 80%, 50%)' }}>
-                              {displayResults.total_found ?? 0}
+                              {results?.total_found ?? 0}
                             </p>
                             <p className="text-xs font-mono" style={{ color: 'hsl(50, 6%, 58%)' }}>found</p>
                           </div>
                         </div>
-                        {displayResults.message && (
+                        {results?.message && (
                           <div className="mt-2 pt-2" style={{ borderTop: '1px solid hsl(70, 8%, 22%)' }}>
                             <p className="text-xs font-mono" style={{ color: 'hsl(50, 6%, 58%)' }}>
-                              {displayResults.message}
+                              {results.message}
                             </p>
                           </div>
                         )}
@@ -963,7 +884,6 @@ export default function Page() {
                             </thead>
                             <tbody>
                               {sorted.map((variable, idx) => {
-                                const isRevealed = revealedValues.has(idx)
                                 const isCopied = copiedIndex === idx
                                 return (
                                   <tr
@@ -983,34 +903,23 @@ export default function Page() {
                                       </code>
                                     </td>
 
-                                    {/* Value with mask/reveal + copy */}
+                                    {/* Value - shown as-is, no masking, no truncation */}
                                     <td className="px-4 py-2.5">
                                       <div className="flex items-center gap-2">
                                         <code
-                                          className="text-sm font-mono flex-1 min-w-0 truncate"
-                                          style={{ color: isRevealed ? 'hsl(60, 30%, 90%)' : 'hsl(50, 6%, 50%)', maxWidth: '320px' }}
-                                          title={isRevealed ? variable.value : undefined}
+                                          className="text-sm font-mono flex-1 min-w-0 break-all"
+                                          style={{ color: 'hsl(60, 30%, 90%)' }}
                                         >
-                                          {isRevealed ? variable.value : maskValue(variable.value)}
+                                          {variable.value}
                                         </code>
-                                        <div className="flex items-center gap-1 shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
-                                          <button
-                                            onClick={() => toggleReveal(idx)}
-                                            className="p-1 transition-colors"
-                                            style={{ color: 'hsl(50, 6%, 58%)' }}
-                                            title={isRevealed ? 'Hide value' : 'Reveal value'}
-                                          >
-                                            {isRevealed ? <FiEyeOff size={14} /> : <FiEye size={14} />}
-                                          </button>
-                                          <button
-                                            onClick={() => handleCopy(variable.value, idx)}
-                                            className="p-1 transition-colors"
-                                            style={{ color: isCopied ? 'hsl(80, 80%, 50%)' : 'hsl(50, 6%, 58%)' }}
-                                            title="Copy value"
-                                          >
-                                            {isCopied ? <FiCheck size={14} /> : <FiCopy size={14} />}
-                                          </button>
-                                        </div>
+                                        <button
+                                          onClick={() => handleCopy(variable.value, idx)}
+                                          className="p-1 transition-colors shrink-0 opacity-60 group-hover:opacity-100"
+                                          style={{ color: isCopied ? 'hsl(80, 80%, 50%)' : 'hsl(50, 6%, 58%)' }}
+                                          title="Copy value"
+                                        >
+                                          {isCopied ? <FiCheck size={14} /> : <FiCopy size={14} />}
+                                        </button>
                                       </div>
                                     </td>
 
@@ -1031,7 +940,7 @@ export default function Page() {
                   )}
 
                   {/* Queried but no results & no loading & no error */}
-                  {!loading && !displayResults && displayHasQueried && !error && (
+                  {!loading && !results && hasQueried && !error && (
                     <EmptyState />
                   )}
                 </div>
