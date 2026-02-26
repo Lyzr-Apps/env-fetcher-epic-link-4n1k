@@ -95,9 +95,19 @@ function normalizeResponse(parsed: any): NormalizedAgentResponse {
   }
 
   if ('message' in parsed && typeof parsed.message === 'string') {
+    // Only treat as text-only if message is the ONLY meaningful key
+    const otherKeys = Object.keys(parsed).filter(k => k !== 'message' && k !== 'metadata')
+    if (otherKeys.length === 0) {
+      return {
+        status: 'success',
+        result: { text: parsed.message },
+        message: parsed.message,
+      }
+    }
+    // Otherwise preserve the full object as the result
     return {
       status: 'success',
-      result: { text: parsed.message },
+      result: parsed,
       message: parsed.message,
     }
   }

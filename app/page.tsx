@@ -66,46 +66,91 @@ const THEME_VARS: React.CSSProperties & Record<string, string> = {
 
 // ─── Response Parser ──────────────────────────────────────────────────────────
 
+function tryParseJsonString(val: any): any {
+  if (typeof val !== 'string') return val
+  const trimmed = val.trim()
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    try {
+      return JSON.parse(trimmed)
+    } catch {
+      return val
+    }
+  }
+  return val
+}
+
+function extractAgentData(obj: any): any {
+  if (!obj || typeof obj !== 'object') return obj
+
+  // If the object already has 'variables' array, it's the target
+  if (Array.isArray(obj.variables)) return obj
+
+  // Try nested string fields that might contain JSON
+  for (const key of ['text', 'response', 'result', 'data', 'content', 'output']) {
+    if (obj[key] !== undefined) {
+      const parsed = tryParseJsonString(obj[key])
+      if (parsed && typeof parsed === 'object' && Array.isArray(parsed.variables)) {
+        return parsed
+      }
+    }
+  }
+
+  return obj
+}
+
 function parseAgentResponse(result: AIAgentResponse): AgentResult | null {
   if (!result.success || !result.response) return null
 
+  // Start from result.response.result
   let data: any = result.response.result
 
-  // If result is a string, try to parse it as JSON
-  if (typeof data === 'string') {
-    try {
-      data = JSON.parse(data)
-    } catch {
-      return null
+  // Step 1: If data is a string, try parsing as JSON
+  data = tryParseJsonString(data)
+
+  // Step 2: If data is still not the right shape, try extracting from nested fields
+  if (data && typeof data === 'object' && !Array.isArray(data.variables)) {
+    data = extractAgentData(data)
+  }
+
+  // Step 3: Also check result.response itself (in case normalizeResponse put it at top level)
+  if (!data || typeof data !== 'object' || !Array.isArray(data.variables)) {
+    const responseLevel = result.response as any
+    if (responseLevel && typeof responseLevel === 'object') {
+      // Check if the response object itself has variables
+      if (Array.isArray(responseLevel.variables)) {
+        data = responseLevel
+      } else {
+        // Try result.response.result again with deeper extraction
+        const resultField = responseLevel.result
+        if (resultField && typeof resultField === 'object') {
+          const extracted = extractAgentData(resultField)
+          if (extracted && Array.isArray(extracted.variables)) {
+            data = extracted
+          }
+        }
+      }
     }
   }
 
-  // If data has a nested text field that's a string, parse that too
-  if (data && typeof data.text === 'string') {
-    try {
-      data = JSON.parse(data.text)
-    } catch {
-      // not JSON text
+  // Step 4: Try the raw_response field as last resort
+  if ((!data || typeof data !== 'object' || !Array.isArray(data.variables)) && (result as any).raw_response) {
+    const rawParsed = tryParseJsonString((result as any).raw_response)
+    if (rawParsed && typeof rawParsed === 'object') {
+      const extracted = extractAgentData(rawParsed)
+      if (extracted && Array.isArray(extracted.variables)) {
+        data = extracted
+      }
     }
   }
 
-  // If data has a nested response field that's a string, parse that
-  if (data && typeof data.response === 'string') {
-    try {
-      data = JSON.parse(data.response)
-    } catch {
-      // not JSON response
-    }
-  }
-
-  // Validate the expected shape
+  // Validate we have a usable object
   if (!data || typeof data !== 'object') return null
 
   return {
-    query_interpretation: data.query_interpretation ?? data.queryInterpretation ?? '',
+    query_interpretation: data.query_interpretation ?? data.queryInterpretation ?? data.interpretation ?? '',
     variables: Array.isArray(data.variables) ? data.variables.map((v: any) => ({
       name: typeof v?.name === 'string' ? v.name : String(v?.name ?? ''),
-      value: typeof v?.value === 'string' ? v.value : String(v?.value ?? ''),
+      value: typeof v?.value === 'string' ? v.value : String(v?.value ?? 'not set'),
       confidence: ['high', 'medium', 'low'].includes(v?.confidence) ? v.confidence : 'low',
     })) : [],
     total_found: typeof data.total_found === 'number' ? data.total_found : (Array.isArray(data.variables) ? data.variables.length : 0),
@@ -414,21 +459,44 @@ export default function Page() {
       const result = await callAIAgent(q, AGENT_ID)
       setActiveAgentId(null)
 
+      if (!result.success) {
+        const errorMsg = result?.error ?? result?.response?.message ?? 'Agent request failed. Please try again.'
+        setError(errorMsg)
+        return
+      }
+
       const parsed = parseAgentResponse(result)
-      if (parsed) {
+      if (parsed && (parsed.variables.length > 0 || parsed.query_interpretation)) {
         setResults(parsed)
         // Add to history
         const historyItem: QueryHistoryItem = {
           id: Date.now().toString(),
-          query: q,
+          query: queryText ? 'Show all environment variables' : q,
           timestamp: new Date().toISOString(),
           resultCount: parsed.total_found,
         }
         setHistory(prev => [historyItem, ...prev.slice(0, 49)])
       } else {
-        // Try fallback: check if there's a text message
-        const fallbackMsg = result?.response?.message ?? result?.error ?? 'No results returned. Try a different query.'
-        setError(fallbackMsg)
+        // Show what came back as a meaningful message
+        const responseMsg = result?.response?.message
+          ?? (result?.response?.result && typeof result.response.result === 'object'
+            ? (result.response.result as any)?.text ?? (result.response.result as any)?.message
+            : null)
+          ?? result?.error
+          ?? 'No matching variables found. The agent returned an empty result. Try a more specific query.'
+        // If parsed had a message, show the parsed result anyway (zero variables is valid)
+        if (parsed && parsed.message) {
+          setResults(parsed)
+          const historyItem: QueryHistoryItem = {
+            id: Date.now().toString(),
+            query: queryText ? 'Show all environment variables' : q,
+            timestamp: new Date().toISOString(),
+            resultCount: 0,
+          }
+          setHistory(prev => [historyItem, ...prev.slice(0, 49)])
+        } else {
+          setError(typeof responseMsg === 'string' ? responseMsg : 'No results returned. Try a different query.')
+        }
       }
     } catch (err) {
       setActiveAgentId(null)
