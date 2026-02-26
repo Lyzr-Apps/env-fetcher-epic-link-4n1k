@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { callAIAgent } from '@/lib/aiAgent'
 import type { AIAgentResponse } from '@/lib/aiAgent'
-import { FiSearch, FiCopy, FiEye, FiEyeOff, FiClock, FiTrash2, FiSettings, FiTerminal, FiAlertCircle, FiRefreshCw, FiChevronUp, FiChevronDown, FiCheck, FiX, FiZap, FiActivity } from 'react-icons/fi'
+import { FiSearch, FiCopy, FiEye, FiEyeOff, FiClock, FiTrash2, FiSettings, FiTerminal, FiAlertCircle, FiRefreshCw, FiChevronUp, FiChevronDown, FiCheck, FiX, FiZap, FiActivity, FiList } from 'react-icons/fi'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -206,6 +206,8 @@ const SAMPLE_HISTORY: QueryHistoryItem[] = [
 
 // ─── Quick Suggestion Chips ───────────────────────────────────────────────────
 
+const FETCH_ALL_QUERY = 'List every single environment variable available on the system. Return all of them without any filter — show everything.'
+
 const SUGGESTIONS = ['Database vars', 'API keys', 'Port configs', 'AWS credentials', 'Redis config']
 
 // ─── Confidence Badge ─────────────────────────────────────────────────────────
@@ -267,16 +269,37 @@ function EmptyState() {
 
 // ─── Initial State (no query yet) ─────────────────────────────────────────────
 
-function InitialState() {
+function InitialState({ onFetchAll, loading }: { onFetchAll: () => void; loading: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 px-4">
       <div className="w-20 h-20 flex items-center justify-center mb-5" style={{ background: 'hsla(52, 100%, 62%, 0.08)', border: '1px solid hsla(52, 100%, 62%, 0.2)' }}>
         <FiZap size={32} style={{ color: 'hsl(52, 100%, 62%)' }} />
       </div>
       <p className="text-lg font-medium mb-2" style={{ color: 'hsl(60, 30%, 96%)' }}>Describe the env variable you need</p>
-      <p className="text-sm text-center max-w-sm" style={{ color: 'hsl(50, 6%, 58%)' }}>
-        Enter a natural-language description above to search for environment variables. Use the suggestion chips for quick queries.
+      <p className="text-sm text-center max-w-sm mb-5" style={{ color: 'hsl(50, 6%, 58%)' }}>
+        Enter a natural-language description above to search for environment variables, or fetch everything at once.
       </p>
+      <button
+        onClick={onFetchAll}
+        disabled={loading}
+        className="flex items-center gap-2 px-6 py-3 text-sm font-mono font-semibold transition-all"
+        style={{
+          background: 'hsl(80, 80%, 50%)',
+          color: 'hsl(70, 10%, 8%)',
+          borderRadius: '0',
+          cursor: loading ? 'not-allowed' : 'pointer',
+          opacity: loading ? 0.5 : 1,
+        }}
+        onMouseEnter={(e) => {
+          if (!loading) e.currentTarget.style.background = 'hsl(80, 80%, 55%)'
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'hsl(80, 80%, 50%)'
+        }}
+      >
+        <FiList size={16} />
+        Fetch All Variables
+      </button>
     </div>
   )
 }
@@ -660,13 +683,45 @@ export default function Page() {
                     </button>
                   </div>
 
+                  {/* Fetch All Button */}
+                  <div className="mt-3">
+                    <button
+                      onClick={() => {
+                        setQuery('Show all environment variables')
+                        setSampleMode(false)
+                        handleSubmit(FETCH_ALL_QUERY)
+                      }}
+                      disabled={loading}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-mono font-semibold transition-all"
+                      style={{
+                        background: 'hsla(80, 80%, 50%, 0.1)',
+                        color: 'hsl(80, 80%, 50%)',
+                        border: '1px solid hsl(80, 80%, 50%)',
+                        borderRadius: '0',
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                        opacity: loading ? 0.5 : 1,
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!loading) {
+                          e.currentTarget.style.background = 'hsla(80, 80%, 50%, 0.2)'
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'hsla(80, 80%, 50%, 0.1)'
+                      }}
+                    >
+                      <FiList size={16} />
+                      <span>Fetch All Variables (No Filter)</span>
+                    </button>
+                  </div>
+
                   {/* Helper text */}
-                  <p className="mt-2 text-xs font-mono" style={{ color: 'hsl(50, 6%, 48%)' }}>
-                    Try: &quot;database credentials&quot;, &quot;all API keys&quot;, &quot;AWS region config&quot;
+                  <p className="mt-3 text-xs font-mono" style={{ color: 'hsl(50, 6%, 48%)' }}>
+                    Or try a specific query: &quot;database credentials&quot;, &quot;all API keys&quot;, &quot;AWS region config&quot;
                   </p>
 
                   {/* Suggestion chips */}
-                  <div className="flex flex-wrap gap-2 mt-3">
+                  <div className="flex flex-wrap gap-2 mt-2">
                     {SUGGESTIONS.map((s) => (
                       <button
                         key={s}
@@ -760,7 +815,16 @@ export default function Page() {
                   )}
 
                   {/* No query yet */}
-                  {!loading && !displayHasQueried && !error && <InitialState />}
+                  {!loading && !displayHasQueried && !error && (
+                    <InitialState
+                      onFetchAll={() => {
+                        setQuery('Show all environment variables')
+                        setSampleMode(false)
+                        handleSubmit(FETCH_ALL_QUERY)
+                      }}
+                      loading={loading}
+                    />
+                  )}
 
                   {/* Results */}
                   {!loading && displayResults && (
