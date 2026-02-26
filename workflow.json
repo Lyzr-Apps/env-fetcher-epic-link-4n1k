@@ -1,0 +1,11 @@
+{
+  "nodes": [
+    {"id": "input_node", "type": "Input", "label": "User Query", "nodeCategory": "input"},
+    {"id": "envvar_agent", "type": "Agent", "label": "EnvVar Interpreter Agent", "nodeCategory": "agent"},
+    {"id": "output_node", "type": "Output", "label": "Results Display", "nodeCategory": "end"}
+  ],
+  "edges": [
+    {"source": "input_node", "target": "envvar_agent"},
+    {"source": "envvar_agent", "target": "output_node"}
+  ]
+}

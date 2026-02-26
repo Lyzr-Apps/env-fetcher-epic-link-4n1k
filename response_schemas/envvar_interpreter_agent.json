@@ -1,0 +1,13 @@
+{
+  "agent_name": "EnvVar Interpreter Agent",
+  "agent_id": "69a0810b6e827eaf7ecbd044",
+  "agent_type": "json",
+  "accessor": "result.response",
+  "has_module_outputs": false,
+  "response_schema": {
+    "query_interpretation": "string - How the agent interpreted the user's query",
+    "variables": "array of { name: string, value: string, confidence: 'high' | 'medium' | 'low' }",
+    "total_found": "number - Total number of matched variables",
+    "message": "string - Summary message about the results"
+  }
+}

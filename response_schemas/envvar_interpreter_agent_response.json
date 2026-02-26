@@ -1,0 +1,32 @@
+{
+  "agent_name": "EnvVar Interpreter Agent",
+  "agent_id": "69a0810b6e827eaf7ecbd044",
+  "description": "Interprets natural language queries to identify relevant environment variable names, calls the ENV_FETCH custom tool to retrieve matching variables and their values from the system, and returns structured results",
+  "agent_type": "json",
+  "accessor": "result",
+  "auto_generated": true,
+  "response_schema": {
+    "query_interpretation": "string",
+    "variables": [
+      {
+        "name": "string",
+        "value": "string",
+        "confidence": "string"
+      }
+    ],
+    "total_found": "number",
+    "message": "string"
+  },
+  "example_response": {
+    "query_interpretation": "How the agent interpreted the user's query",
+    "variables": [
+      {
+        "name": "Environment variable name",
+        "value": "Environment variable value or 'not set'",
+        "confidence": "Match confidence level"
+      }
+    ],
+    "total_found": 0,
+    "message": "Summary message about the results"
+  }
+}

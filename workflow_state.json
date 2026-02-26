@@ -1,0 +1,11 @@
+{
+  "agents": {
+    "envvar_interpreter_agent": {
+      "agent_id": "69a0810b6e827eaf7ecbd044",
+      "name": "EnvVar Interpreter Agent",
+      "model": "gpt-4.1",
+      "provider": "openai",
+      "temperature": 0.2
+    }
+  }
+}
