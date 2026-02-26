@@ -303,12 +303,34 @@ async function pollTask(task_id: string) {
 
   const parsed = parseLLMJson(agentResponseRaw)
 
-  const toNormalize =
-    parsed && typeof parsed === 'object' && parsed.success === false && parsed.data === null
-      ? agentResponseRaw
-      : parsed
+  // Check if parseLLMJson returned its error sentinel
+  const isParseError = parsed && typeof parsed === 'object' && parsed.success === false && parsed.data === null
+
+  const toNormalize = isParseError ? agentResponseRaw : parsed
 
   const normalized = normalizeResponse(toNormalize)
+
+  // If normalizeResponse lost the structured data (no variables in result),
+  // try to recover from the original parsed data
+  if (!Array.isArray(normalized.result?.variables) && !isParseError && parsed && typeof parsed === 'object') {
+    // The parsed object itself might be the agent's response
+    if (Array.isArray(parsed.variables)) {
+      normalized.result = parsed
+      normalized.message = parsed.message ?? normalized.message
+    }
+  }
+
+  // Also try to recover from agentResponseRaw if it's an object
+  if (!Array.isArray(normalized.result?.variables)) {
+    let rawObj = agentResponseRaw
+    if (typeof rawObj === 'string') {
+      try { rawObj = JSON.parse(rawObj) } catch { rawObj = null }
+    }
+    if (rawObj && typeof rawObj === 'object' && Array.isArray(rawObj.variables)) {
+      normalized.result = rawObj
+      normalized.message = rawObj.message ?? normalized.message
+    }
+  }
 
   return NextResponse.json({
     success: true,

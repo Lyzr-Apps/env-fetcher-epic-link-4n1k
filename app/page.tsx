@@ -134,11 +134,51 @@ function parseAgentResponse(result: AIAgentResponse): AgentResult | null {
 
   // Step 4: Try the raw_response field as last resort
   if ((!data || typeof data !== 'object' || !Array.isArray(data.variables)) && (result as any).raw_response) {
-    const rawParsed = tryParseJsonString((result as any).raw_response)
-    if (rawParsed && typeof rawParsed === 'object') {
-      const extracted = extractAgentData(rawParsed)
-      if (extracted && Array.isArray(extracted.variables)) {
-        data = extracted
+    let rawVal = (result as any).raw_response
+    // raw_response could be a string containing JSON, possibly nested
+    for (let depth = 0; depth < 3; depth++) {
+      rawVal = tryParseJsonString(rawVal)
+      if (rawVal && typeof rawVal === 'object') {
+        // Check this level
+        if (Array.isArray(rawVal.variables)) {
+          data = rawVal
+          break
+        }
+        // Check nested response field
+        if (rawVal.response) {
+          const inner = tryParseJsonString(rawVal.response)
+          if (inner && typeof inner === 'object' && Array.isArray(inner.variables)) {
+            data = inner
+            break
+          }
+          rawVal = rawVal.response
+          continue
+        }
+        // Try extracting from known keys
+        const extracted = extractAgentData(rawVal)
+        if (extracted && Array.isArray(extracted.variables)) {
+          data = extracted
+          break
+        }
+        break
+      } else {
+        break
+      }
+    }
+  }
+
+  // Step 5: Last-ditch - scan all string values at result.response.result for embedded JSON with variables
+  if (!data || typeof data !== 'object' || !Array.isArray(data.variables)) {
+    const resultObj = result.response?.result
+    if (resultObj && typeof resultObj === 'object') {
+      for (const val of Object.values(resultObj)) {
+        if (typeof val === 'string' && val.includes('variables')) {
+          const parsed = tryParseJsonString(val)
+          if (parsed && typeof parsed === 'object' && Array.isArray(parsed.variables)) {
+            data = parsed
+            break
+          }
+        }
       }
     }
   }
@@ -358,6 +398,7 @@ export default function Page() {
   const [hasQueried, setHasQueried] = useState(false)
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [debugInfo, setDebugInfo] = useState<string | null>(null)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const [timestampNow, setTimestampNow] = useState('')
@@ -426,6 +467,22 @@ export default function Page() {
       const result = await callAIAgent(q, AGENT_ID)
       setActiveAgentId(null)
 
+      // Debug: capture raw result shape
+      const debugData = {
+        success: result.success,
+        hasResponse: !!result.response,
+        responseStatus: result.response?.status,
+        resultType: typeof result.response?.result,
+        resultKeys: result.response?.result && typeof result.response.result === 'object' ? Object.keys(result.response.result) : 'N/A',
+        hasVariables: result.response?.result && typeof result.response.result === 'object' ? Array.isArray((result.response.result as any).variables) : false,
+        variablesCount: result.response?.result && typeof result.response.result === 'object' && Array.isArray((result.response.result as any).variables) ? (result.response.result as any).variables.length : 0,
+        responseMessage: result.response?.message,
+        error: result.error,
+        rawResponseType: typeof (result as any).raw_response,
+      }
+      setDebugInfo(JSON.stringify(debugData, null, 2))
+      console.log('[EnvFetch] Raw API result:', JSON.stringify(result, null, 2).slice(0, 2000))
+
       if (!result.success) {
         const errorMsg = result?.error ?? result?.response?.message ?? 'Agent request failed. Please try again.'
         setError(errorMsg)
@@ -433,9 +490,10 @@ export default function Page() {
       }
 
       const parsed = parseAgentResponse(result)
+      console.log('[EnvFetch] Parsed result:', parsed ? { varsCount: parsed.variables.length, interp: parsed.query_interpretation?.slice(0, 50) } : 'null')
+
       if (parsed && (parsed.variables.length > 0 || parsed.query_interpretation)) {
         setResults(parsed)
-        // Add to history
         const historyItem: QueryHistoryItem = {
           id: Date.now().toString(),
           query: queryText ? 'Show all environment variables' : q,
@@ -451,7 +509,6 @@ export default function Page() {
             : null)
           ?? result?.error
           ?? 'No matching variables found. The agent returned an empty result. Try a more specific query.'
-        // If parsed had a message, show the parsed result anyway (zero variables is valid)
         if (parsed && parsed.message) {
           setResults(parsed)
           const historyItem: QueryHistoryItem = {
@@ -750,6 +807,18 @@ export default function Page() {
               {/* ─── Results Area ─────────────────────────────────────── */}
               <div className="flex-1 px-4 md:px-8 py-4">
                 <div className="max-w-3xl mx-auto">
+
+                  {/* Debug Panel - temporary */}
+                  {debugInfo && (
+                    <details className="mb-4" style={{ border: '1px solid hsl(261, 100%, 75%)', borderRadius: '0' }}>
+                      <summary className="px-3 py-2 cursor-pointer text-xs font-mono" style={{ background: 'hsl(70, 10%, 16%)', color: 'hsl(261, 100%, 75%)' }}>
+                        Debug: API Response Shape
+                      </summary>
+                      <pre className="px-3 py-2 text-xs font-mono overflow-x-auto" style={{ background: 'hsl(70, 10%, 14%)', color: 'hsl(50, 6%, 58%)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                        {debugInfo}
+                      </pre>
+                    </details>
+                  )}
 
                   {/* Error Banner */}
                   {error && (
